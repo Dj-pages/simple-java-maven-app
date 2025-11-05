@@ -15,7 +15,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 // Get code from GitHub repository
-                git branch: 'main',
+                git branch: 'master',
                     url: 'https://github.com/Dj-pages/simple-java-maven-app.git'
             }
         }
