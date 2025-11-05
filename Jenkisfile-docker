@@ -1,0 +1,180 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Docker image configuration
+        IMAGE_NAME = "simple-java-maven-app"
+        IMAGE_TAG = "${BUILD_NUMBER}" // Use Jenkins build number as tag
+        DOCKER_REGISTRY = "" // Add your registry if needed (e.g., "docker.io/username")
+        
+        // Full image name
+        FULL_IMAGE_NAME = "${DOCKER_REGISTRY}${IMAGE_NAME}:${IMAGE_TAG}"
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code...'
+                git branch: 'master',
+                    url: 'https://github.com/Dj-pages/simple-java-maven-app.git'
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo "Building Docker image: ${FULL_IMAGE_NAME}"
+                script {
+                    if (isUnix()) {
+                        sh """
+                            docker build -t ${FULL_IMAGE_NAME} .
+                            docker tag ${FULL_IMAGE_NAME} ${IMAGE_NAME}:latest
+                        """
+                    } else {
+                        bat """
+                            docker build -t ${FULL_IMAGE_NAME} .
+                            docker tag ${FULL_IMAGE_NAME} ${IMAGE_NAME}:latest
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Test Docker Image') {
+            steps {
+                echo 'Testing Docker image...'
+                script {
+                    if (isUnix()) {
+                        sh """
+                            docker images | grep ${IMAGE_NAME}
+                            echo "Docker image built successfully!"
+                        """
+                    } else {
+                        bat """
+                            docker images | findstr ${IMAGE_NAME}
+                            echo Docker image built successfully!
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Run Container Test') {
+            steps {
+                echo 'Testing container startup...'
+                script {
+                    if (isUnix()) {
+                        sh """
+                            # Run container in detached mode
+                            docker run -d --name test-container-${BUILD_NUMBER} ${FULL_IMAGE_NAME}
+                            
+                            # Wait a few seconds
+                            sleep 5
+                            
+                            # Check if container is running
+                            docker ps -a | grep test-container-${BUILD_NUMBER}
+                            
+                            # Get logs
+                            docker logs test-container-${BUILD_NUMBER}
+                            
+                            # Stop and remove test container
+                            docker stop test-container-${BUILD_NUMBER} || true
+                            docker rm test-container-${BUILD_NUMBER} || true
+                        """
+                    } else {
+                        bat """
+                            REM Run container in detached mode
+                            docker run -d --name test-container-${BUILD_NUMBER} ${FULL_IMAGE_NAME}
+                            
+                            REM Wait a few seconds
+                            timeout /t 5 /nobreak
+                            
+                            REM Check if container is running
+                            docker ps -a | findstr test-container-${BUILD_NUMBER}
+                            
+                            REM Get logs
+                            docker logs test-container-${BUILD_NUMBER}
+                            
+                            REM Stop and remove test container
+                            docker stop test-container-${BUILD_NUMBER}
+                            docker rm test-container-${BUILD_NUMBER}
+                        """
+                    }
+                }
+            }
+        }
+        
+        stage('Push to Registry (Optional)') {
+            when {
+                // Only push if DOCKER_REGISTRY is set
+                expression { env.DOCKER_REGISTRY != '' }
+            }
+            steps {
+                echo "Pushing to registry: ${DOCKER_REGISTRY}"
+                script {
+                    // Add your Docker registry credentials in Jenkins
+                    // Credentials ID should be 'docker-registry-credentials'
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-registry-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        if (isUnix()) {
+                            sh """
+                                echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                                docker push ${FULL_IMAGE_NAME}
+                                docker push ${IMAGE_NAME}:latest
+                                docker logout
+                            """
+                        } else {
+                            bat """
+                                echo %DOCKER_PASS% | docker login -u %DOCKER_USER% --password-stdin
+                                docker push ${FULL_IMAGE_NAME}
+                                docker push ${IMAGE_NAME}:latest
+                                docker logout
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Cleanup Old Images') {
+            steps {
+                echo 'Cleaning up old images...'
+                script {
+                    if (isUnix()) {
+                        sh """
+                            # Remove dangling images
+                            docker image prune -f
+                        """
+                    } else {
+                        bat """
+                            REM Remove dangling images
+                            docker image prune -f
+                        """
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo "Docker image built successfully: ${FULL_IMAGE_NAME}"
+            echo "Latest tag: ${IMAGE_NAME}:latest"
+        }
+        failure {
+            echo 'Docker build failed!'
+        }
+        always {
+            // Clean up test containers if any remain
+            script {
+                if (isUnix()) {
+                    sh "docker rm -f test-container-${BUILD_NUMBER} || true"
+                } else {
+                    bat "docker rm -f test-container-${BUILD_NUMBER} || exit 0"
+                }
+            }
+        }
+    }
+}
