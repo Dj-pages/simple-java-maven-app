@@ -3,7 +3,7 @@ pipeline {
     
     tools {
         // Install the Maven version configured as "Maven3" in Jenkins Global Tool Configuration
-        maven "Maven3"
+        maven "Maven-3.9"
     }
     
     environment {
