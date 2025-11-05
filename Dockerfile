@@ -1,7 +1,7 @@
 # Multi-stage build for efficient image size
 
 # Stage 1: Build the application
-FROM maven:3.9.9-eclipse-temurin-11 AS build
+FROM maven:3.9.9-eclipse-temurin-21 AS build
 
 # Set working directory
 WORKDIR /app
